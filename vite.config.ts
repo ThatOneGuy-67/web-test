@@ -70,6 +70,11 @@ const injectDeploymentTokens = (env: Record<string, string>, siteUrl: string): P
     "__SITE_URL__": siteUrl,
     "__SUPABASE_URL__": (env.VITE_SUPABASE_URL || "").replace(/\/*$/, ""),
     "__SUPABASE_PUBLISHABLE_KEY__": env.VITE_SUPABASE_PUBLISHABLE_KEY || "",
+    "__FIREBASE_API_KEY__": env.VITE_FIREBASE_API_KEY || "",
+    "__FIREBASE_AUTH_DOMAIN__": env.VITE_FIREBASE_AUTH_DOMAIN || "",
+    "__FIREBASE_DATABASE_URL__": env.VITE_FIREBASE_DATABASE_URL || "",
+    "__FIREBASE_PROJECT_ID__": env.VITE_FIREBASE_PROJECT_ID || "",
+    "__FIREBASE_APP_ID__": env.VITE_FIREBASE_APP_ID || "",
   };
 
   const apply = (input: string) =>
@@ -91,7 +96,7 @@ const injectDeploymentTokens = (env: Record<string, string>, siteUrl: string): P
         .join("\n");
     },
     closeBundle() {
-      for (const file of ["robots.txt", "sitemap.xml", "ai.html", "llms.txt"]) {
+      for (const file of ["robots.txt", "sitemap.xml", "ai.html", "llms.txt", "chat.html"]) {
         const out = path.resolve(__dirname, "dist", file);
         if (!existsSync(out)) continue;
 

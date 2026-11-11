@@ -16,6 +16,7 @@ import {
 } from '@/lib/scramjet';
 import RotatingFacts from '@/components/RotatingFacts';
 import { setCanonical } from '@/lib/siteConfig';
+import { restartWebsiteTour } from '@/components/WebsiteTour';
 
 /**
  * Full Settings page (replaces the old modal).
@@ -38,7 +39,7 @@ const cloakPresets = [
   { name: 'Wikipedia',        title: 'Wikipedia, the free encyclopedia', favicon: 'https://en.wikipedia.org/static/favicon/wikipedia.ico' },
 ];
 
-type Tab = 'general' | 'proxy' | 'privacy' | 'search' | 'cloak' | 'panic' | 'theme' | 'performance';
+type Tab = 'general' | 'proxy' | 'privacy' | 'search' | 'cloak' | 'panic' | 'theme' | 'performance' | 'help';
 
 /** Sets per-route <title> and a self-referencing canonical link. */
 function usePageMeta(title: string, path: string) {
@@ -68,6 +69,7 @@ const tabs: { id: Tab; label: string; icon: any }[] = [
   { id: 'panic',       label: 'Panic',       icon: KeyRound },
   { id: 'theme',       label: 'Theme',       icon: Palette },
   { id: 'performance', label: 'Performance', icon: Gauge },
+  { id: 'help',        label: 'Help',        icon: SettingsIcon },
 ];
 
 const SettingsPage = () => {
@@ -319,6 +321,14 @@ const SettingsPage = () => {
                 <Toggle label="Block WebRTC connections" hint="Reduces direct peer-to-peer connection attempts. Some calls and real-time apps may stop working."
                   checked={settings.webRtcBlockEnabled} onChange={v => update('webRtcBlockEnabled', v)} />
               </>
+            )}
+
+            {tab === 'help' && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-muted-foreground">Website tour</h3>
+                <p className="text-sm text-muted-foreground">Replay the short introduction to navigation, features, settings, and optional accounts.</p>
+                <button onClick={restartWebsiteTour} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Restart website tour</button>
+              </div>
             )}
 
             {tab === 'search' && (

@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -11,17 +11,19 @@ import Admin from "./pages/Admin";
 import Account from "./pages/Account";
 import { startVisitorTracking } from "./lib/visitorTracker";
 import SiteBanGate from "./components/SiteBanGate";
+import WebsiteTour from "./components/WebsiteTour";
 
 const queryClient = new QueryClient();
 
-const App = () => {
+const RouteTracking = () => {
+  const location = useLocation();
   useEffect(() => {
-    const stopTracking = startVisitorTracking();
+    return startVisitorTracking(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
+  return null;
+};
 
-    return () => {
-      stopTracking.then((stop) => stop());
-    };
-  }, []);
+const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -30,6 +32,8 @@ const App = () => {
         <Sonner />
 
         <BrowserRouter basename={import.meta.env.BASE_URL}>
+          <RouteTracking />
+          <WebsiteTour />
           <SiteBanGate>
             <Routes>
               <Route path="/" element={<Index />} />

@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, type Database } from 'firebase/database';
+import { getAuth, signInAnonymously, type Auth, type User } from 'firebase/auth';
 import { FIREBASE_CONFIG, HAS_CHAT } from './siteConfig';
 
 /**
@@ -19,6 +20,7 @@ function connect(): Database {
 }
 
 let cached: Database | null = null;
+let cachedAuth: Auth | null = null;
 
 /** Lazily-created database handle; throws only if used while unconfigured. */
 export const db = new Proxy({} as Database, {
@@ -29,11 +31,18 @@ export const db = new Proxy({} as Database, {
   },
 });
 
-const env = import.meta.env as Record<string, string | undefined>;
+/** Firebase identity used by the chat. Staff permissions must come from trusted
+ * custom claims checked by Realtime Database Rules, never from this client. */
+export function chatAuth(): Auth {
+  if (!HAS_CHAT) throw new Error('Chat is not configured.');
+  cachedAuth ??= getAuth(getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG));
+  return cachedAuth;
+}
 
-export const ADMIN_PASSWORD = (env.VITE_CUP ?? '').trim();
-export const MOD_PASSWORD = (env.VITE_LOSER ?? '').trim();
-export const OWNER_PASSWORD = (env.VITE_ALPHA ?? '').trim();
+export async function ensureChatGuest(): Promise<User> {
+  const auth = chatAuth();
+  return auth.currentUser ?? (await signInAnonymously(auth)).user;
+}
 
 
 export type Role = 'owner' | 'admin' | 'mod' | 'user';
@@ -100,24 +109,6 @@ export const COLORS = [
   '#91d5ff',
   '#d3adff',
 ];
-
-export function browserFingerprint() {
-  const data = [
-    navigator.userAgent,
-    navigator.language,
-    (navigator as Navigator & { platform?: string }).platform ?? '',
-    screen.width,
-    screen.height,
-    screen.colorDepth,
-    new Date().getTimezoneOffset(),
-  ].join('||');
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = ((hash << 5) - hash) + data.charCodeAt(i);
-    hash |= 0;
-  }
-  return 'u_' + String(Math.abs(hash));
-}
 
 export function censor(text: string) {
   let out = text;

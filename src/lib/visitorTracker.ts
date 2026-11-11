@@ -2,197 +2,66 @@ import { createClient } from "@supabase/supabase-js";
 
 const VISITOR_KEY = "tog_visitor_id";
 const SESSION_KEY = "tog_session_id";
-const STARTED_KEY = "tog_session_started_at";
 const HEARTBEAT_MS = 30_000;
-
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-function createTrackingClient(visitorId: string, sessionId: string) {
+function id(key: string, storage: Storage): string {
+  const existing = storage.getItem(key);
+  if (existing) return existing;
+  const value = crypto.randomUUID();
+  storage.setItem(key, value);
+  return value;
+}
+
+function visitorDetails() {
+  const ua = navigator.userAgent;
+  return {
+    device: /Mobi|Android/i.test(ua) ? "Mobile" : /iPad|Tablet/i.test(ua) ? "Tablet" : "Desktop",
+    os: /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "macOS" : /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iOS" : "Unknown",
+    browser: /Firefox/i.test(ua) ? "Firefox" : /Edg/i.test(ua) ? "Edge" : /Chrome/i.test(ua) ? "Chrome" : /Safari/i.test(ua) ? "Safari" : "Unknown",
+    referrer: document.referrer ? (() => { try { return new URL(document.referrer).hostname; } catch { return null; } })() : null,
+  };
+}
+
+function trackingClient(visitorId: string, sessionId: string) {
   return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    global: {
-      headers: {
-        "x-visitor-id": visitorId,
-        "x-session-id": sessionId,
-      },
-    },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
+    global: { headers: { "x-visitor-id": visitorId, "x-session-id": sessionId } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 }
 
-function getVisitorId(): string {
-  const existing = localStorage.getItem(VISITOR_KEY);
-  if (existing) return existing;
+/** Records deliberate router navigation through the server-side validated RPC. */
+export function startVisitorTracking(path: string) {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || typeof window === "undefined") return () => {};
+  const visitorId = id(VISITOR_KEY, localStorage);
+  const sessionId = id(SESSION_KEY, sessionStorage);
+  const client = trackingClient(visitorId, sessionId);
+  const details = visitorDetails();
+  let disposed = false;
 
-  const id = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `u_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  localStorage.setItem(VISITOR_KEY, id);
-  return id;
-}
-
-function getSessionId(): string {
-  const existing = sessionStorage.getItem(SESSION_KEY);
-  if (existing) return existing;
-
-  const id = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  sessionStorage.setItem(SESSION_KEY, id);
-  sessionStorage.setItem(STARTED_KEY, new Date().toISOString());
-  return id;
-}
-
-async function ensureVisitor(client: ReturnType<typeof createTrackingClient>, visitorId: string) {
-  const now = new Date().toISOString();
-
-  const { data, error: selectError } = await client
-    .from("visitors")
-    .select("id, visit_count")
-    .eq("visitor_id", visitorId)
-    .maybeSingle();
-
-  if (selectError) throw selectError;
-
-  if (data) {
-    const { error } = await client
-      .from("visitors")
-      .update({
-        last_seen: now,
-        visit_count: (Number(data.visit_count) || 0) + 1,
-      })
-      .eq("visitor_id", visitorId);
-
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await client
-    .from("visitors")
-    .insert({
-      visitor_id: visitorId,
-      first_seen: now,
-      last_seen: now,
-      visit_count: 1,
+  const record = async (online: boolean) => {
+    if (disposed) return;
+    const { error } = await client.rpc("record_visitor_activity", {
+      p_visitor_id: visitorId, p_session_id: sessionId,
+      p_device_type: details.device, p_operating_system: details.os, p_browser: details.browser,
+      p_current_path: path, p_referrer_domain: details.referrer,
+      p_is_online: online, p_last_activity: new Date().toISOString(),
     });
-
-  if (error) throw error;
-}
-
-async function ensureSession(
-  client: ReturnType<typeof createTrackingClient>,
-  visitorId: string,
-  sessionId: string,
-) {
-  const now = new Date().toISOString();
-  const startedAt = sessionStorage.getItem(STARTED_KEY) || now;
-
-  const { data, error: selectError } = await client
-    .from("sessions")
-    .select("id")
-    .eq("session_id", sessionId)
-    .maybeSingle();
-
-  if (selectError) throw selectError;
-
-  if (data) {
-    await heartbeat(client, sessionId, visitorId);
-    return;
-  }
-
-  const { error } = await client
-    .from("sessions")
-    .insert({
-      session_id: sessionId,
-      visitor_id: visitorId,
-      started_at: startedAt,
-      last_heartbeat: now,
-    });
-
-  if (error) throw error;
-}
-
-async function heartbeat(
-  client: ReturnType<typeof createTrackingClient>,
-  sessionId: string,
-  visitorId: string,
-) {
-  const now = new Date().toISOString();
-
-  const { error: sessionError } = await client
-    .from("sessions")
-    .update({
-      visitor_id: visitorId,
-      last_heartbeat: now,
-    })
-    .eq("session_id", sessionId);
-
-  if (sessionError) throw sessionError;
-
-  const { error: visitorError } = await client
-    .from("visitors")
-    .update({ last_seen: now })
-    .eq("visitor_id", visitorId);
-
-  if (visitorError) throw visitorError;
-}
-
-export function startVisitorTracking() {
-  if (typeof window === "undefined") return () => {};
-
-  const visitorId = getVisitorId();
-  const sessionId = getSessionId();
-  const client = createTrackingClient(visitorId, sessionId);
-
-  void (async () => {
-    try {
-      // Create/update the visitor first so a session is never recorded before its visitor.
-      await ensureVisitor(client, visitorId);
-      await ensureSession(client, visitorId, sessionId);
-    } catch (error) {
-      console.warn("Visitor tracking failed:", error);
-    }
-  })();
-
-  const heartbeatTimer = window.setInterval(() => {
-    void heartbeat(client, sessionId, visitorId).catch(error => {
-      console.warn("Visitor heartbeat failed:", error);
-    });
-  }, HEARTBEAT_MS);
-
-  const handlePageChange = () => {
-    void heartbeat(client, sessionId, visitorId).catch(error => {
-      console.warn("Visitor page tracking failed:", error);
-    });
+    if (error) console.warn("Visitor tracking unavailable:", error.message);
   };
 
-  window.addEventListener("popstate", handlePageChange);
-
-  return () => {
-    window.clearInterval(heartbeatTimer);
-    window.removeEventListener("popstate", handlePageChange);
-  };
+  void record(true);
+  const timer = window.setInterval(() => void record(true), HEARTBEAT_MS);
+  return () => { disposed = true; window.clearInterval(timer); };
 }
 
-export function getTrackedVisitorId() {
-  if (typeof window === "undefined") return null;
-  return getVisitorId();
-}
+export function getTrackedVisitorId() { return typeof window === "undefined" ? null : id(VISITOR_KEY, localStorage); }
 
 export async function checkVisitorBanned(): Promise<boolean> {
-  if (typeof window === "undefined") return false;
-  const visitorId = getVisitorId();
-  const client = createTrackingClient(visitorId, "");
-  const { data, error } = await client.rpc("is_current_visitor_banned");
-  if (error) {
-    console.warn("Visitor ban check failed:", error);
-    return false;
-  }
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY || typeof window === "undefined") return false;
+  const visitorId = id(VISITOR_KEY, localStorage);
+  const { data, error } = await trackingClient(visitorId, "").rpc("is_current_visitor_banned");
+  if (error) { console.warn("Visitor ban check unavailable:", error.message); return false; }
   return data === true;
 }

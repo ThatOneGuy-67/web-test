@@ -1765,7 +1765,6 @@ input::placeholder{
   </div>
 
   <input id="usernameInput" placeholder="Username (min 3 chars)">
-  <input id="adminPass" type="password" placeholder="Admin password (optional)">
   <button onclick="enterChat()">ENTER CHAT</button>
 </div>
 
@@ -1882,15 +1881,21 @@ input::placeholder{
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <script>
 const firebaseConfig = {
-  apiKey: "AIzaSyAUh8VuVTZJ4kPZF203-bml44dtHCDQRl8",
-  authDomain: "snoopys-chat.firebaseapp.com",
-  databaseURL: "https://snoopys-chat-default-rtdb.firebaseio.com",
-  projectId: "snoopys-chat"
+  apiKey: "__FIREBASE_API_KEY__",
+  authDomain: "__FIREBASE_AUTH_DOMAIN__",
+  databaseURL: "__FIREBASE_DATABASE_URL__",
+  projectId: "__FIREBASE_PROJECT_ID__",
+  appId: "__FIREBASE_APP_ID__"
 };
+if(!firebaseConfig.apiKey || !firebaseConfig.databaseURL) {
+  document.body.innerHTML = '<main style="padding:2rem;font-family:system-ui;color:white;background:#090b10;min-height:100vh">Chat is not configured yet. Please contact the site owner.</main>';
+  throw new Error("Chat Firebase configuration is missing");
+}
 firebase.initializeApp(firebaseConfig);
 
 const adminDB = firebase.database().ref("admin");
@@ -1926,10 +1931,6 @@ function saveChatNickname(name){
   });
   profileRef.child("names").child(nameKey).set(true);
 }
-
-const ADMIN_PASSWORD="__SNOOPY_ADMIN_PASSWORD__";
-const MOD_PASSWORD="__SNOOPY_MOD_PASSWORD__";
-const OWNER_PASSWORD="__SNOOPY_OWNER_PASSWORD__";
 
 let username="";
 let role="user";
@@ -2070,32 +2071,13 @@ const catGifs=[
   "https://media.tenor.com/JIS1Maf23kgAAAA1/chinese-cat.webp",
 ];
 
-function enterChat(){
+async function enterChat(){
   const inputName=usernameInput.value.trim();
-  const pass=adminPass.value;
-
-  if(pass===OWNER_PASSWORD){
-    username=inputName || "👑ThatOneGuy👑";
-    isAdmin=true;
-    isMod=false;
-    role="owner";
-  } else if(pass===ADMIN_PASSWORD){
-    username=inputName || "🥞Admin🥞";
-    isAdmin=true;
-    isMod=false;
-    role="admin";
-  } else if(pass===MOD_PASSWORD){
-    username=inputName || "🍔Mod🍔";
-    isAdmin=false;
-    isMod=true;
-    role="mod";
-  } else {
-    username=inputName || new URLSearchParams(location.search).get("accountName") || "Guest";
-    isAdmin=false;
-    isMod=false;
-    role="user";
-    if(username.length<3) return alert("Username too short");
-  }
+  username=inputName || new URLSearchParams(location.search).get("accountName") || "Guest";
+  isAdmin=false; isMod=false; role="user";
+  if(username.length<3) return alert("Username too short");
+  try { await firebase.auth().signInAnonymously(); }
+  catch (error) { alert("Unable to start a guest chat session. Please try again later."); return; }
 
   adminPanel.style.display = (role==="owner" || role==="admin") ? "block" : "none";
   adminPanel.classList.remove("open");
@@ -2113,7 +2095,6 @@ function enterChat(){
     localStorage.setItem("savedUsername", username);
     window.parent.postMessage({type:"chat-name-changed", name:username}, "*");
       saveChatNickname(username);
-      localStorage.setItem("savedPassword", pass);
       ensureBaseRooms();
       renderPublicRooms();
       renderPrivateUserPicker();
@@ -2901,12 +2882,8 @@ function sendGif(g){ getActiveChatRef().push({name:username,msg:g,admin:isAdmin,
 // Load saved username and password on page load
 const accountName = new URLSearchParams(location.search).get("accountName");
 const savedUsername = accountName || localStorage.getItem("savedUsername");
-const savedPassword = localStorage.getItem("savedPassword");
 if(savedUsername){
   usernameInput.value = savedUsername;
-}
-if(savedPassword){
-  adminPass.value = savedPassword;
 }
 const savedColor=localStorage.getItem("chatUserColor");
 if(savedColor) userColors[usernameInput.value.trim() || ""]=savedColor;
