@@ -1766,6 +1766,12 @@ input::placeholder{
 
   <input id="usernameInput" placeholder="Username (min 3 chars)">
   <button onclick="enterChat()">ENTER CHAT</button>
+  <details class="mt-2 text-left">
+    <summary class="cursor-pointer text-xs text-gray-400">Sign in or create a chat account</summary>
+    <input id="chatEmail" type="email" autocomplete="email" placeholder="Email">
+    <input id="chatPassword" type="password" autocomplete="current-password" placeholder="Password (8+ characters)">
+    <div class="flex gap-2"><button type="button" onclick="signInChatAccount()">SIGN IN</button><button type="button" onclick="createChatAccount()">CREATE ACCOUNT</button></div>
+  </details>
 </div>
 
 <!-- CHAT -->
@@ -2076,7 +2082,7 @@ async function enterChat(){
   username=inputName || new URLSearchParams(location.search).get("accountName") || "Guest";
   isAdmin=false; isMod=false; role="user";
   if(username.length<3) return alert("Username too short");
-  try { await firebase.auth().signInAnonymously(); }
+  try { if(!firebase.auth().currentUser) await firebase.auth().signInAnonymously(); }
   catch (error) { alert("Unable to start a guest chat session. Please try again later."); return; }
 
   adminPanel.style.display = (role==="owner" || role==="admin") ? "block" : "none";
@@ -2102,6 +2108,22 @@ async function enterChat(){
       switchRoom("general", publicRoomList[0]);
     });
   });
+}
+
+async function signInChatAccount(){
+  const email=document.getElementById("chatEmail").value.trim();
+  const password=document.getElementById("chatPassword").value;
+  if(!email || !password) return alert("Enter your email and password.");
+  try { await firebase.auth().signInWithEmailAndPassword(email,password); await enterChat(); }
+  catch(error) { alert("Could not sign in. Check your email, password, and connection."); }
+}
+
+async function createChatAccount(){
+  const email=document.getElementById("chatEmail").value.trim();
+  const password=document.getElementById("chatPassword").value;
+  if(!email || password.length<8) return alert("Use an email and a password with at least 8 characters.");
+  try { await firebase.auth().createUserWithEmailAndPassword(email,password); await enterChat(); }
+  catch(error) { alert("Could not create that account. It may already exist, or the password may not meet Firebase requirements."); }
 }
 
 function goBack(){
